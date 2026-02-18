@@ -1,10 +1,14 @@
 name: BuildMeshLab
 
 on:
-  [push, pull_request]
+  workflow_dispatch:  # <--- 新增：允许手动点击运行
+  push:
+  pull_request:
 
 env:
   QT_VERSION: 5.15.*
+  # 注意：由于你没有配置证书 Secrets，代码签名步骤可能会报错或跳过，
+  # 但通常不影响生成测试用的 exe/app。
   MAC_CERT: ${{secrets.MACOS_CERT_ID}}
   MAC_CERT_PSSW: ${{secrets.MACOS_CERTIFICATE_PSSW}}
   WIN_CERT: ${{secrets.WIN_CERTIFICATE}}
@@ -16,8 +20,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ['ubuntu-22.04', 'ubuntu-22.04-arm', 'macos-15-intel', 'macos-latest', 'windows-latest']
-        precision: [single_precision, double_precision]
+        # <--- 修改：只保留标准 GitHub Runner，去掉 arm 和特殊 macos
+        os: ['ubuntu-22.04', 'windows-latest', 'macos-latest'] 
+        # <--- 修改：建议先只跑 double_precision 节省时间，如果需要 single 再加回来
+        precision: [double_precision]
     steps:
     - uses: actions/checkout@v4
       with:
@@ -26,7 +32,8 @@ jobs:
       uses: ./.github/actions/0_setup
       with:
         qt-version: ${{env.QT_VERSION}}
-        use-jurpel-qt-action: ${{matrix.os != 'macos-latest' && runner.os != 'Linux'}}
+        # 修正逻辑：macos-latest 现在通常是 ARM (M1/M2)，需要根据实际情况调整
+        use-jurpel-qt-action: ${{ runner.os == 'Windows' }}
     - name: Setup env variables
       id: envs
       shell: bash
@@ -51,6 +58,7 @@ jobs:
         build-options: ${{steps.envs.outputs.build_options}}
         nightly: true
     - name: Deploy
+      # 如果没有 Secrets，这一步内部可能会失败，或者只打包不签名
       uses: ./.github/actions/2_deploy
       with:
         use-brew-qt: ${{matrix.os == 'macos-latest'}}
